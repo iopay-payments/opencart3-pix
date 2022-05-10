@@ -1,0 +1,779 @@
+<?xml version="1.0" encoding="utf-8"?>
+<modification>
+    <name>Modification Default IOPAY</name>
+    <version>1.2</version>
+    <author>IOPAY Ltd</author>
+    <code>iopay_modification_default</code>
+    <link>http://www.iopay.com.br</link>
+
+    <file path="catalog/controller/checkout/success.php">
+        <operation>
+            <search trim="true">
+                <![CDATA[public function index() {]]>
+            </search>
+            <add position="before" trim="true">
+                <![CDATA[
+
+                       /**
+                         * Obtem o Bearer token para utilização dos recursos da API IOPAY.
+                         *
+                         * Quando type 'transaction': Obtém o Bearer token responsável por gerar e manipular transações (esse token desse ser utilizado exclusivamente no backend)
+                         * Quando type 'token': Obtém o Bearer token responsável por TOKENIZAR cartões de crédito (esse token desse pode ser utilizado no frontend e funciona somente e unicamente para tokenizar cartões)
+                         *
+                         * @param string $type (can be: token or transaction)
+                         * @return mixed
+                         */
+                        private function getIOPayAuthorization($sandbox = true, $type = 'transaction'){
+
+				            error_reporting(0);
+                            ini_set('display_errors', 0);
+
+                            $this->load->model('checkout/order');
+
+                            switch($this->session->data['iopay_payment_type']){
+
+                                case "pix" :
+                                        $credentials = array(
+                                            'io_seller_id' => $this->config->get('payment_iopay_checkout_transparente_pix_ioid'),
+                                            'email' => $this->config->get('payment_iopay_checkout_transparente_pix_email'),
+                                            'secret' => utf8_encode($this->config->get('payment_iopay_checkout_transparente_pix_io_api_secret'))
+                                        );
+                                break;
+
+                                case "card" :
+                                    $credentials = array(
+                                        'io_seller_id' => $this->config->get('payment_iopay_checkout_transparente_card_ioid'),
+                                        'email' => $this->config->get('payment_iopay_checkout_transparente_card_email'),
+                                        'secret' => utf8_encode($this->config->get('payment_iopay_checkout_transparente_card_io_api_secret'))
+                                    );
+                                break;
+
+                                case "boleto" :
+                                    $credentials = array(
+                                        'io_seller_id' => $this->config->get('payment_iopay_checkout_boleto_ioid'),
+                                        'email' => $this->config->get('payment_iopay_checkout_boleto_email'),
+                                        'secret' => utf8_encode($this->config->get('payment_iopay_checkout_boleto_io_api_secret'))
+                                    );
+                                break;
+
+                            }
+
+                            $ch = curl_init();
+
+                            if($type == 'transaction'){
+                                //// BASE URLS to manipulate transactions
+                                if (!$sandbox) {
+                                    $uri = 'https://api.iopay.com.br/api/auth/login';
+                                } else {
+                                    $uri = "https://sandbox.api.iopay.com.br/api/auth/login";
+                                }
+                            }else if($type == 'token'){
+                                //// BASE URLS to generate tokenization token (to be used in frontend)
+                                if (!$sandbox) {
+                                    $uri = 'https://checkout.iopay.com.br/api/checkout/v1/auth/login';
+                                } else {
+                                    $uri = "https://sandbox.checkout.iopay.com.br/api/checkout/v1/auth/login";
+                                }
+                            }
+
+                            curl_setopt($ch, CURLOPT_URL, $uri);
+                            curl_setopt($ch, CURLOPT_POST, 1);
+                            curl_setopt($ch, CURLOPT_PORT, 443);
+                            //curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query(json_encode($credentials)));
+                            curl_setopt( $ch, CURLOPT_POSTFIELDS, json_encode($credentials) );
+                            curl_setopt( $ch, CURLOPT_HTTPHEADER, array('Content-Type:application/json'));
+
+                            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+                            $server_output = curl_exec($ch);
+
+                            curl_close ($ch);
+
+                            $auth = json_decode($server_output);
+                            $token = $auth->access_token;
+
+                            if($token == '' || $token == null){
+                                return 'Unauthorized';
+                            }
+
+                            if(isset($auth -> error)){
+                                return $auth -> error;
+                            }else {
+                                return $token;
+                            }
+
+                        }
+
+                        private function iopayRequest($token, $url, $post, $method = 'POST') {
+
+				            error_reporting(0);
+                            ini_set('display_errors', 0);
+
+                            header('Content-Type: application/json');
+
+                            $ch = curl_init($url);
+                            $post = json_encode($post);
+
+                            $authorization = "Authorization: Bearer ".$token;
+
+                            curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json' , $authorization )); // Inject the token into the header
+                            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+                            if($method == 'POST') {
+                                curl_setopt($ch, CURLOPT_POST, 1); // Specify the request method as POST
+                                curl_setopt($ch, CURLOPT_POSTFIELDS, ($post));
+                            }else if($method == 'GET'){
+                                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET'); // Specify the request method as get
+                            }
+
+                            $result = curl_exec($ch);
+
+                            curl_close($ch);
+                            return json_decode($result);
+                        }
+                ]]>
+            </add>
+        </operation>
+
+        <operation>
+            <search trim="true">
+                <![CDATA[$this->load->language('checkout/success');]]>
+            </search>
+            <add position="after" trim="true">
+                <![CDATA[
+
+                if(isset($this->session->data['iopay_ecommerce_order_id']) && $this->session->data['iopay_ecommerce_order_id'] != ''){
+
+                    error_reporting(0);
+                    ini_set('display_errors', 0);
+
+                    $data['order_id'] = $this->session->data['iopay_ecommerce_order_id'];
+                    $data['iopay_transaction_id'] = $this->session->data['iopay_transaction_id'];
+                    $data['iopay_sandbox_mode'] = $this->session->data['iopay_sandbox_mode'];
+                    $data['iopay_payment_type'] = $this->session->data['iopay_payment_type'];
+
+                    if($data['iopay_payment_type'] == 'pix'){
+                        $data['iopay_pix_entropykey'] = $this->session->data['iopay_pix_entropykey'];
+                    }
+
+                    if(isset($data['iopay_card_brand'])){
+                        $data['iopay_card_brand'] = strtolower($data['iopay_card_brand']);
+                    }
+
+                    $total_price = $this->session->data['iopay_total_order'];
+                    $data['iopay_total_order'] = "R$ ".$total_price;
+
+                    $auth_token = $this->getIOPayAuthorization($data['iopay_sandbox_mode'],'transaction');
+
+                    if (!$data['iopay_sandbox_mode']) {
+                        $getTransaction = 'https://api.iopay.com.br/api/v1/transaction/get/'.$data['iopay_transaction_id'];
+                    } else {
+                        $getTransaction = 'https://sandbox.api.iopay.com.br/api/v1/transaction/get/'.$data['iopay_transaction_id'];
+                    }
+
+                    $customerParams = array();
+                    $get_response = $this->iopayRequest($auth_token, $getTransaction, $customerParams, 'GET');
+
+                    if(isset($get_response->success)){
+                        $data['iopay_status'] = $get_response->success->status;
+
+                        if($data['iopay_payment_type'] == 'card'){
+                            $data['iopay_card_number'] = "<strong>".$get_response->success->payment_method->first4_digits. " **** **** " . $get_response->success->payment_method->last4_digits."</strong>";
+                            $data['iopay_card_brand'] = strtolower($get_response->success->payment_method->card_brand);
+                            $data['iopay_installments'] = $get_response->success->installment_plan->number_installments;
+
+                            if($this->session->data['iopay_installment_label'] != ""){
+                                $data['iopay_installment_mode'] = $this->session->data['iopay_installment_label'];
+                            }
+
+                        }else if($data['iopay_payment_type'] == 'boleto'){
+
+                            $data['iopay_boleto_number'] = $get_response->success->payment_method->barcode;
+                            $data['iopay_boleto_url'] = $get_response->success->payment_method->url;
+                            $data['iopay_boleto_expiration'] = date("d/m/Y",strtotime($get_response->success->payment_method->expiration_date));
+
+                        }else if($data['iopay_payment_type'] == 'pix'){
+                            if($this->session->data['iopay_sandbox_mode']){
+                                $data['iopay_pix_qrimage'] = "https://sandbox.api.iopay.com.br/api/pix/qrcode/".$data['iopay_transaction_id'];
+                            }else {
+                                $data['iopay_pix_qrimage'] = "https://api.iopay.com.br/api/pix/qrcode/".$data['iopay_transaction_id'];;
+                            }
+                        }
+
+                        if($data['iopay_status'] == 'pending'){
+                            $data['iopay_message'] = '<span class="label label-warning" style="font-size:13px; padding:1px;"> Aguardando Pagamento </span>';
+                        }else if($data['iopay_status'] == 'succeeded') {
+                            $data['iopay_message'] = '<span class="label label-success" style="font-size:13px; padding:1px;"> Pagamento Aprovado </span>';
+                        }else if($data['iopay_status'] == 'canceled'){
+                            $data['iopay_message'] = '<span class="label label-danger" style="font-size:13pxx;  padding:1px;"> Cancelado </span>';
+                        }else {
+                            $data['iopay_message'] = '<span class="label label-danger" style="font-size:13px;  padding:1px;"> Expirado ('.$data['iopay_status'].') </span>';
+                        }
+                    }else {
+                        $data['iopay_status'] = 'canceled';
+                        $data['iopay_message'] = '<span class="label label-danger" style="font-size:13px;  padding:1px;"> Expirado </span>';
+                    }
+                    $data['order_link'] = $this->url->link('account/order/info',"order_id=".$data['order_id']);
+                }else {
+                    $data['order_id'] = '';
+                }
+        ]]>
+            </add>
+        </operation>
+    </file>
+
+    <file path="catalog/view/theme/*/template/common/success.twig">
+
+        <operation>
+            <search trim="true"><![CDATA[{{ header }}]]></search>
+            <add position="replace" trim="true"><![CDATA[
+
+                    <style>
+                        .borderBox{
+                            border: 1px solid #d4d4d4;
+                            border-radius: 8px;
+                            color: #626262;
+                        }
+                        .paddingBoxGrey{
+                            padding: 40px 20px 40px 20px;
+                        }
+                        .paddingBox{
+                            padding: 4px 4px 4px 4px;
+                        }
+                        .backgroundGrey{
+                            background-color: #f3f3f3;
+                            border-top-right-radius: 10px;
+                            border-bottom-right-radius: 10px;
+                        }
+                        .circleSteps{
+                            background-color: #999999;
+                            color: #ffffff;
+                            width: 28px!important;
+                            height: 28px!important;
+                            display: flex;
+                            justify-content: center;
+-                                align-items: center;
+                            border-radius: 100px;
+                            margin-right: 16px;
+                        }
+                        .btn-custom{
+                            background-color: #53be53;
+                            color: #ffffff;
+                        }
+                        .btn-custom:hover{
+                            background-color: #4aa74a;
+                            color: #ffffff;
+                        }
+
+                        @media screen and (max-width: 991px) {
+                            .smartPaddingMobile{
+                                padding-top: 10px;
+                            }
+                        }
+                        #pixArea {
+                            font-size:12.5px;
+
+                        }
+                    </style>
+
+                    <script>
+                            function copyToClipboard() {
+
+                                var text = document.getElementById('pixEntropyKey').innerText;
+
+                                if (window.clipboardData && window.clipboardData.setData) {
+                                    // Internet Explorer-specific code path to prevent textarea being shown while dialog is visible.
+                                    window.clipboardData.setData("Text", text);
+                                    $('#pixEntropyKeyCopiedMessage').removeClass('hidden');
+                                    return false;
+
+                                }else if (document.queryCommandSupported && document.queryCommandSupported("copy")) {
+                                    var textarea = document.createElement("textarea");
+                                    textarea.textContent = text;
+                                    textarea.style.position = "fixed";  // Prevent scrolling to bottom of page in Microsoft Edge.
+                                    document.body.appendChild(textarea);
+                                    textarea.select();
+                                    try {
+                                        document.execCommand("copy");  // Security exception may be thrown by some browsers.
+                                        $('#pixEntropyKeyCopiedMessage').removeClass('hidden');
+                                        return false;
+                                    }
+                                    catch (ex) {
+                                        console.warn("Copy to clipboard failed.", ex);
+                                        $('#pixEntropyKeyCopiedMessage').removeClass('hidden');
+                                        $('#pixEntropyKeyCopiedMessage').innerText = 'Falhou';
+                                        return false;
+                                    }
+                                    finally {
+                                        document.body.removeChild(textarea);
+                                    }
+                                }
+
+                                $('#pixEntropyKeyCopiedMessage').removeClass('hidden');
+                                return false;
+                            }
+                    </script>
+
+                    {{ header }}
+
+            ]]></add>
+
+        </operation>
+
+        <operation>
+            <search trim="true"><![CDATA[{{ text_message }}]]></search>
+            <add position="replace" trim="true"><![CDATA[
+
+			{% if order_id == null or order_id == '' %}
+                {{ text_message }}
+			{% else %}
+                  
+			    <div id="pixArea" class="col-md-12 col-lg-12 col-sm-12 center" style="margin-top:50px;">
+
+                        {% if iopay_payment_type == 'pix' and iopay_status == 'pending'  %}
+                            <h4 style="margin-bottom:10px;">Pague a sua compra com PIX</h4>
+                        {% endif %}
+
+                        {% if iopay_payment_type == 'boleto' and iopay_status == 'pending'  %}
+                            <h4 style="margin-bottom:10px;">O seu boleto foi gerado com sucesso! </h4>
+                        {% endif %}
+
+                        <div class="col-md-12 paddingBox" style="padding-left:0px; margin-left:0px; ">
+                            <div class="row" style="margin-bottom: 30px; ">
+                                <div class="col-md-3 col-sm-12 smartPaddingMobile">
+                                    <div class="text-center" style="background-color: #f3f3f3; padding: 10px;border-radius: 8px">
+                                        <span>
+
+                                            {% if iopay_payment_type == 'pix'  %}
+
+                                                <img src="https://static.iopay.dev/ecommerce_plugins/opencart/iopay1.5.5/img/logo-pix.png" height="50"/>
+
+                                            {% elseif iopay_payment_type == 'card' %}
+
+                                                <img src="https://checkout.iopay.dev/checkout/assets/img/brands/{{ iopay_card_brand }}.svg" height="50"/>
+
+                                                {{ iopay_card_number }}
+
+                                            {% elseif iopay_payment_type == 'boleto' %}
+
+                                                <img src="https://static.iopay.dev/ecommerce_plugins/opencart/iopay1.5.5/img/boleto.png" height="50"/>
+
+                                            {% endif %}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 col-sm-12 smartPaddingMobile">
+                                    <div class="text-center" style="background-color: #f3f3f3; padding: 10px;border-radius: 8px">
+                                        <span>Número do pedido</span>
+                                        <br>
+                                        <span style="font-size: 25px; color: #474747; font-weight: bold" id="OrderID">{{ order_id }}</span>
+                                    </div>
+                                </div>
+                                <div class=" col-md-3 col-sm-12 smartPaddingMobile">
+                                    <div class="text-center" style="background-color: #f3f3f3; padding: 10px;border-radius: 8px">
+                                        <span>Valor Total</span>
+                                        <br>
+                                        <span style="font-size: 25px; color: #474747; font-weight: bold" id="OrderTotal">{{ iopay_total_order }}</span>
+                                    </div>
+                                </div>
+                                <div class=" col-md-3 col-sm-12 smartPaddingMobile">
+                                    <div class="text-center" style="background-color: #f3f3f3; padding: 10px;border-radius: 8px">
+                                        <span>Status</span>
+                                        <br>
+                                        <span style="font-size: 11px;" id="StatusLabel">{{ iopay_message }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <br>
+
+                            {% if iopay_payment_type == 'pix'  %}
+
+                                {% if iopay_status == 'pending'  %}
+
+                                    <div class="col-md-3 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-right:0px;" id="showQrCode">
+
+                                        <strong>Pagar por PIX QRCode</strong>
+                                        <br>
+                                        <span id="pirQRCode" class="text-left">
+                                            <img src="{{ iopay_pix_qrimage }}" alt="" style="width: 270px;  background-color: #ffffff;" id="QRCodeImage">
+                                        </span>
+                                        <br>
+
+                                        <span id="pixEntropyKey" class="text-center" style="display: none">{{ iopay_pix_entropykey }}</span>
+
+                                        <strong>Pagar por PIX Copia e Cola</strong><br/>
+
+                                        <span onclick="copyToClipboard()" type="button" class="btn text-left" style="margin-top: 16px; border:0; font-size:14px; font-weigh:600; text-align:left; background-color:#3d0769; color:white">
+                                            Copiar Chave &nbsp;
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" fill="currentColor" class="bi bi-back" viewBox="0 0 16 16">
+                                                <path d="M0 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2H2a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H2z"/>
+                                            </svg>
+                                        </span>
+
+                                        <span id="pixEntropyKeyCopiedMessage" class="label label-info hidden">copiado</span>
+
+                                    </div>
+
+                                    <div class="col-md-1 smartPaddingMobile" style="padding-left:5px; " id="showQrCodeSpacer">
+                                        &nbsp;
+                                    </div>
+
+                                    <div class="col-md-8 col-sm-12 smartPaddingMobile text-left" style="padding-top:30px; border-left:1px solid #BBBBBB; padding-left:35px; " id="showQrCodeIntro">
+
+                                    <strong>Como eu pago com Pix?</strong><br><br>
+                                        <br>
+                                        <div style="display: flex">
+                                            <div>
+                                                <div class="circleSteps">1</div>
+                                            </div>
+                                            <div style="padding-top: 4px">Abra o aplicativo do seu banco e navegue para a seção de Pix</div>
+                                        </div>
+                                        <div style="display: flex; margin-top: 30px">
+                                            <div>
+                                                <div class="circleSteps">2</div>
+                                            </div>
+                                            <div style="padding-top: 4px">Selecione a opção pagar por PIX QR Code ou Pix Copia e Cola e aponte a câmera para o código QR ao lado ou copie e cole o código</div>
+                                    </div>
+
+                                    <br/>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href=window.location.href" >
+                                            &nbsp; &nbsp; Atualizar &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                    <br/>
+                                    <br/>
+
+                                    <div class="row d-flex align-items-center" style="margin: 0 auto;">
+                                        <div class="col-sm-12 col-md-12 col-lg-12 d-flex align-items-center" id="paymentIoPay">
+                                            <div class="row" style="margin-top: 40px;">
+                                                <div class="col-12 float-center">
+                                                    <div class="d-flex align-content- flex-wrap ">
+                                                        <div class="p-4 ml-sm-0 ml-xl-5 ml-md-5"><a href="https://iopay.com.br" target="_blank" alt="IOPAY" title="IOPAY"><img src="https://static.iopay.dev/assets/img/iopay.png" width="60"></a></div>
+                                                        <div class="p-4 ml-sm-0 ml-xl-5 ml-md-5 small">
+                                                            <br/>
+                                                            Essa transação é processada com tecnologias de pagamento da IOPAY.<br/>
+                                                            <i class="fa fa-lock"></i> Esta é uma conexão segura e os seus dados são protegidos com criptografia de ponta a ponta.
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                            {% endif %}
+
+                            {% if iopay_status == 'succeeded'  %}
+
+                                <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    <div class="alert alert-success mb-3" id="paymentSuccess" style="padding: 16px; margin-bottom: 30px;">
+                                        <h5 id="failTitle" style="font-size: 16px;">Pagamento Processado com Sucesso!</h5>
+                                        Parabéns! O seu pagamento foi processado e aprovado com sucesso! Anote os dados do seu pedido:
+                                    </div>
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Gateway: </strong><br>
+                                    IOPAY
+                                    <br><br>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                            {% endif %}
+
+                            {% if iopay_status == 'canceled' or  iopay_status == 'expired' or iopay_status == ''%}
+
+                                   <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    {% if(iopay_sandbox_mode) %}
+                                        <div class="alert alert-warning mb-3" id="paymentExpired" style="padding: 16px; margin-bottom: 30px;">
+                                            <h5 id="failTitle" style="font-size: 16px;">PIX em ambiente de testes retornará transação expirada</h5>
+                                           Se você chegou até aqui pode concluir que a sua instalação do plugin de pagamento funcionou.
+                                            <br/>Configure com as credenciais de produção para que as ordens de pagamento por PIX possam ser geradas de forma válida e em ambiente real
+                                        </div>
+                                    {%  else %}
+                                        <div class="alert alert-danger mb-3" id="paymentExpired" style="padding: 16px; margin-bottom: 30px;">
+                                            <h5 id="failTitle" style="font-size: 16px;">Seu pagamento foi expirado!</h5>
+                                            A sua ordem de pagamento PIX atingiu o tempo limite de 6 horas para pagamento e expirou. Para realizar o pagamento por favor gere o pedido novamente e faça a leitura do código QR em até 6 horas
+                                        </div>
+                                    {%  endif %}
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Gateway: </strong><br>
+                                    IOPAY
+                                    <br><br>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                           {% endif %}
+
+                        {% elseif iopay_payment_type == 'card' %}
+
+                            {% if iopay_status == 'succeeded'  %}
+
+                                <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    <div class="alert alert-success mb-3" id="paymentSuccess" style="padding: 16px; margin-bottom: 30px;">
+                                        <h5 id="failTitle" style="font-size: 16px;">Pagamento Processado com Sucesso!</h5>
+                                        Parabéns! O seu pagamento foi processado e aprovado com sucesso! Anote os dados do seu pedido:
+                                    </div>
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Modalidade de Parcelamento:</strong><br>
+                                    <strong>{{ iopay_installment_mode }}</strong>
+                                    <br>
+                                    <br>
+
+                                    <strong>Gateway: </strong><br>
+                                    IOPAY
+                                    <br><br>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                            {% endif %}
+
+                            {% if iopay_status == 'canceled' or iopay_status == 'failed' %}
+
+                                <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    <div class="alert alert-danger mb-3" id="paymentSuccess" style="padding: 16px; margin-bottom: 30px;">
+                                        <h5 id="failTitle" style="font-size: 16px;">Seu pagamento foi cancelado ou falhou.</h5>
+                                        Verifique com o banco do seu cartão se possui limite disponível para essa compra.
+                                    </div>
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Modalidade de Parcelamento:</strong><br>
+                                    {{ iopay_installments }}X ({{ iopay_installment_mode }})
+                                    <br>
+                                    <br>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                            {% endif %}
+
+                            {% if iopay_status == 'pre_authorized'  %}
+
+                                <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    <div class="alert alert-warning mb-3" id="paymentSuccess" style="padding: 16px; margin-bottom: 30px;">
+                                        <h5 id="failTitle" style="font-size: 16px;">Seu pagamento está em análise</h5>
+                                        O seu banco está analisando o pagamento. Para checar o andamento da análise, clique no botão atualizar abaixo. A análise pode levar algum tempo.
+                                        <br><br>
+                                        <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href=window.location.href" >
+                                            &nbsp; &nbsp; Atualizar &nbsp; &nbsp;
+                                        </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                                    </div>
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Modalidade de Parcelamento:</strong><br>
+                                    {{ iopay_installments }}X ({{ iopay_installment_mode }})
+                                    <br>
+                                    <br>
+
+                                    <strong>Gateway: </strong><br>
+                                    IOPAY
+                                    <br><br>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                            {% endif %}
+
+                        {% elseif iopay_payment_type == 'boleto' %}
+
+                            {% if iopay_status == 'succeeded' or iopay_status == 'approved' or iopay_status == 'processed' %}
+
+                                <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    <div class="alert alert-success mb-3" id="paymentSuccess" style="padding: 16px; margin-bottom: 30px;">
+                                        <h5 id="failTitle" style="font-size: 16px;">Pagamento Processado com Sucesso!</h5>
+                                        Parabéns! O seu pagamento foi boleto foi processado e aprovado com sucesso! Anote os dados da sua compra:
+                                    </div>
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Data de Vencimento </strong><br>
+                                        {{ iopay_boleto_expiration }}
+                                    <br><br>
+
+                                    <strong>Número do Boleto </strong><br>
+                                        <img src="https://static.iopay.dev/ecommerce_plugins/opencart/iopay1.5.5/img/boleto.png" height="20"/> &nbsp;&nbsp; {{ iopay_boleto_number }} &nbsp;&nbsp;&nbsp;&nbsp; <a href="{{ iopay_boleto_url }}" title="Clique para ver o boleto" target="_blank">[ Visualizar Boleto ]</a>
+                                    <br><br>
+
+                                     <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+                                    <strong>Status: </strong><br>
+                                    Pago
+                                    <br><br>
+
+                                    <strong>Gateway: </strong><br>
+                                    IOPAY
+                                    <br><br>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                            {% endif %}
+
+                            {% if iopay_status == 'failed'  %}
+
+                                <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    <div class="alert alert-danger mb-3" id="paymentSuccess" style="padding: 16px; margin-bottom: 30px;">
+                                        <h5 id="failTitle" style="font-size: 16px;">Houve uma falha ao gerar o seu boleto</h5>
+                                        Por favor, tente gerar o pagamento novamente.
+                                    </div>
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Data de Vencimento </strong><br>
+                                        {{ iopay_boleto_expiration }}
+                                    <br><br>
+
+                                    <strong>Número do Boleto </strong><br>
+                                        <img src="https://static.iopay.dev/ecommerce_plugins/opencart/iopay1.5.5/img/boleto.png" height="20"/> &nbsp;&nbsp; {{ iopay_boleto_number }} &nbsp;&nbsp;&nbsp;&nbsp; <a href="{{ iopay_boleto_url }}" title="Clique para ver o boleto" target="_blank">[ Visualizar Boleto ]</a>
+                                    <br><br>
+
+                                    <strong>Gateway: </strong><br>
+                                    IOPAY
+                                    <br><br>
+
+                                     <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                            {% endif %}
+
+                            {% if iopay_status == 'pending'  %}
+
+                                <div class="col-md-12 col-sm-12 smartPaddingMobile" style="padding: 10px; padding-left:0px; padding-top:0px; margin-top:0px; padding-right:0px;" id="showQrCode">
+
+                                    <strong>Número do pedido:</strong><br>
+                                    {{ order_id }}
+                                    <br>
+                                    <br>
+
+                                    <strong>Data de Vencimento </strong><br>
+                                        {{ iopay_boleto_expiration }}
+                                    <br><br>
+
+                                    <strong>Número do Boleto </strong><br>
+                                        <img src="https://static.iopay.dev/ecommerce_plugins/opencart/iopay1.5.5/img/boleto.png" height="20"/> &nbsp;&nbsp; {{ iopay_boleto_number }} &nbsp;&nbsp;&nbsp;&nbsp; <a href="{{ iopay_boleto_url }}" title="Clique para ver o boleto" target="_blank">[ Visualizar Boleto ]</a>
+                                    <br><br>
+
+                                    <strong>Gateway: </strong><br>
+                                    IOPAY
+                                    <br><br>
+
+                                     <strong>ID da Transação:</strong><br>
+                                    {{ iopay_transaction_id }}
+                                    <br>
+                                    <br>
+
+
+                                    <button class="btn btn-io btn-md font-white" type="submit" style="border-radius: 25px;" onclick="window.location.href='{{ order_link }}'" >
+                                        &nbsp; &nbsp; Detalhes do Pedido &nbsp; &nbsp;
+                                    </button>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+
+                                </div>
+
+                            {% endif %}
+
+                        {% endif %}
+
+                   </div>
+
+                </div>
+
+ 		   {% endif %}
+
+            ]]></add>
+        </operation>
+    </file>
+
+</modification>

@@ -1,0 +1,390 @@
+{{ header }}{{ column_left }}
+
+<div id="content">
+  <div class="page-header">
+    <div class="container-fluid">
+      <div class="pull-right">
+        <button type="submit" form="form-payment" data-toggle="tooltip" title="{{ button_save }}" class="btn btn-primary"><i class="fa fa-save"></i></button>
+        <a href="{{ cancel }}" data-toggle="tooltip" title="{{ button_cancel }}" class="btn btn-default"><i class="fa fa-reply"></i></a></div>
+      <h1>{{ heading_title }}</h1>
+      <ul class="breadcrumb">
+        {% for breadcrumb in breadcrumbs %}
+        <li><a href="{{ breadcrumb.href }}">{{ breadcrumb.text }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="container-fluid">
+    {% if error_warning %}
+    <div class="alert alert-danger alert-dismissible"><i class="fa fa-exclamation-circle"></i> {{ error_warning }}
+      <button type="button" class="close" data-dismiss="alert">&times;</button>
+    </div>
+    {% endif %}
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title"><i class="fa fa-pencil"></i> {{ text_edit }}</h3>
+      </div>
+      <div class="panel-body">
+        <form action="{{ action }}" method="post" enctype="multipart/form-data" id="form-payment" class="form-horizontal">
+          <ul class="nav nav-tabs">
+            <li class="active"><a href="#tab-general" data-toggle="tab">{{ tab_general }}</a></li>
+            <li><a href="#tab-status" data-toggle="tab">{{ tab_order_status }}</a></li>
+            <li><a href="#tab-fields" data-toggle="tab">Mapeamento de Campos</a></li>
+          </ul>
+
+          <div class="tab-content">
+
+            <div class="tab-pane active" id="tab-general">
+              <hr/>
+              <h3>Configurações do Checkout PIX</h3><small>* você obtém os dados de conexão com API no seu processo de credenciamento na IOPAY ou através da sua Conta Digital IO</small><br><br>
+              <div class="form-group required">
+
+                <label class="col-sm-2 control-label" for="entry-email">{{ entry_email }}</label>
+                <div class="col-sm-10">
+                  <input type="text" name="payment_iopay_checkout_transparente_pix_email" value="{{ payment_iopay_checkout_transparente_pix_email }}" placeholder="{{ entry_email }}" id="entry-email" class="form-control"/>
+                  <small>Email cadastrado na sua conta IOPAY</small>
+                  {% if error_email %}
+                  <div class="text-danger">{{ error_email }}</div>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="form-group required">
+                <label class="col-sm-2 control-label" for="entry-ioid">IO SELLER ID</label>
+                <div class="col-sm-10">
+                  <input type="text" name="payment_iopay_checkout_transparente_pix_ioid" value="{{ payment_iopay_checkout_transparente_pix_ioid }}" placeholder="Digite o IO ID da sua loja" id="entry-ioid" class="form-control"/>
+                  {% if error_ioid %}
+                    <div class="text-danger">{{ error_ioid }}</div>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="form-group required">
+                <label class="col-sm-2 control-label" for="entry-ioid">API SECRET</label>
+                <div class="col-sm-10">
+                  <input type="text" name="payment_iopay_checkout_transparente_pix_io_api_secret" value="{{ payment_iopay_checkout_transparente_pix_io_api_secret }}" placeholder="Api secret" id="entry-io_api_secret" class="form-control"/>
+
+                  {% if error_io_api_secret %}
+                    <div class="text-danger">{{ error_io_api_secret }}</div>
+                  {% endif %}
+                </div>
+              </div>
+
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-live-demo"><span data-toggle="tooltip" title="Escolha o seu plano antifraude, conforme cadastrado na IOPAY">IO ANTIFRAUD_PUBLIC_TYPE</span></label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_antifraud_type" id="input-live-demo" class="form-control">
+
+                    {% if payment_iopay_checkout_transparente_pix_antifraud_type == 'with_anti_fraud' %}
+                      <option value="without_anti_fraud" onclick="hideAntifraudPublicKey(true)">Sem Antifraude</option>
+                      <option value="with_anti_fraud" onclick="hideAntifraudPublicKey(false)"selected="selected">Antifraude Padrão</option>
+                      <option value="with_anti_fraud_insurance" onclick="hideAntifraudPublicKey(false)">Antifraude com Seguro</option>
+                    {% elseif payment_iopay_checkout_transparente_pix_antifraud_type == 'with_anti_fraud_insurance' %}
+                      <option value="without_anti_fraud" onclick="hideAntifraudPublicKey(true)">Sem Antifraude</option>
+                      <option value="with_anti_fraud" onclick="hideAntifraudPublicKey(false)">Antifraude Padrão</option>
+                      <option value="with_anti_fraud_insurance" onclick="hideAntifraudPublicKey(false)" selected="selected">Antifraude com Seguro</option>
+                    {% else %}
+                      <option value="without_anti_fraud" selected="selected" onclick="hideAntifraudPublicKey(true)">Sem Antifraude</option>
+                      <option value="with_anti_fraud" onclick="hideAntifraudPublicKey(false)">Antifraude Padrão</option>
+                      <option value="with_anti_fraud_insurance" onclick="hideAntifraudPublicKey(false)">Antifraude com Seguro</option>
+                    {% endif %}
+
+                  </select>
+
+                </div>
+              </div>
+
+              <div class="form-group required" id="iopay_antifraud_public_key_field">
+                <label class="col-sm-2 control-label" for="entry-ioid">IO ANTIFRAUD_PUBLIC_KEY</label>
+                <div class="col-sm-10">
+                  <input type="text" name="payment_iopay_checkout_transparente_pix_antifraud_id" value="{{ payment_iopay_checkout_transparente_pix_antifraud_id }}" placeholder="ANTIFRAUD ID (obrigatório quando o seu plano na IO contém antifraude habilitado)" id="entry-ioid" class="form-control"/>
+                  {% if error_antifraud_id %}
+                    <div class="text-danger">{{ error_antifraud_id }}</div>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-live-demo"><span data-toggle="tooltip" title="{{ help_test }}">{{ entry_test }}</span></label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_test" id="input-live-demo" class="form-control">
+                    {% if payment_iopay_checkout_transparente_pix_test %}
+                    <option value="1" selected="selected">{{ text_yes }}</option>
+                    <option value="0">{{ text_no }}</option>
+                    {% else %}
+                    <option value="1">{{ text_yes }}</option>
+                    <option value="0" selected="selected">{{ text_no }}</option>
+                    {% endif %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-debug"><span data-toggle="tooltip" title="{{ help_debug }}">{{ entry_debug }}</span></label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_debug" id="input-debug" class="form-control">
+                    {% if payment_iopay_checkout_transparente_pix_debug %}
+                    <option value="1" selected="selected">{{ text_enabled }}</option>
+                    <option value="0">{{ text_disabled }}</option>
+                    {% else %}
+                    <option value="1">{{ text_enabled }}</option>
+                    <option value="0" selected="selected">{{ text_disabled }}</option>
+                    {% endif %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group hide hidden d-none">
+                <label class="col-sm-2 control-label" for="input-transaction">{{ entry_transaction }}</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_transaction" id="input-transaction" class="form-control">
+                    {% if not payment_iopay_checkout_transparente_pix_transaction %}
+                    <option value="0" selected="selected">{{ text_authorization }}</option>
+                    {% else %}
+                    <option value="0">{{ text_authorization }}</option>
+                    {% endif %}
+                    {% if payment_iopay_checkout_transparente_pix_transaction %}
+                    <option value="1" selected="selected">{{ text_sale }}</option>
+                    {% else %}
+                    <option value="1">{{ text_sale }}</option>
+                    {% endif %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-total"><span data-toggle="tooltip" title="{{ help_total }}">{{ entry_total }}</span></label>
+                <div class="col-sm-10">
+                  <input type="text" name="payment_iopay_checkout_transparente_pix_total" value="{{ payment_iopay_checkout_transparente_pix_total }}" placeholder="{{ entry_total }}" id="input-total" class="form-control"/>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-geo-zone">{{ entry_geo_zone }}</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_geo_zone_id" id="input-geo-zone" class="form-control">
+                    <option value="0">{{ text_all_zones }}</option>
+                    {% for geo_zone in geo_zones %}
+                    {% if geo_zone.geo_zone_id == payment_iopay_checkout_transparente_pix_geo_zone_id %}
+                    <option value="{{ geo_zone.geo_zone_id }}" selected="selected">{{ geo_zone.name }}</option>
+                    {% else %}
+                    <option value="{{ geo_zone.geo_zone_id }}">{{ geo_zone.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-status">{{ entry_status }}</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_status" id="input-status" class="form-control">
+                    {% if payment_iopay_checkout_transparente_pix_status %}
+                    <option value="1" selected="selected">{{ text_enabled }}</option>
+                    <option value="0">{{ text_disabled }}</option>
+                    {% else %}
+                    <option value="1">{{ text_enabled }}</option>
+                    <option value="0" selected="selected">{{ text_disabled }}</option>
+                    {% endif %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-sort-order">{{ entry_sort_order }}</label>
+                <div class="col-sm-10">
+                  <input type="text" name="payment_iopay_checkout_transparente_pix_sort_order" value="{{ payment_iopay_checkout_transparente_pix_sort_order }}" placeholder="{{ entry_sort_order }}" id="input-sort-order" class="form-control"/>
+                </div>
+              </div>
+            </div>
+            <div class="tab-pane" id="tab-status">
+            <hr/>
+            <h3>Status do Pedido</h3><small>* de acordo com o retorno do processamento do pagamento</small><br><br>
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-canceled-status">Cancelado</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_canceled_status_id" id="input-canceled-status" class="form-control">
+                    {% for order_status in order_statuses %}
+                    {% if order_status.order_status_id == payment_iopay_checkout_transparente_pix_canceled_status_id %}
+                    <option value="{{ order_status.order_status_id }}" selected="selected">{{ order_status.name }}</option>
+                    {% else %}
+                    <option value="{{ order_status.order_status_id }}">{{ order_status.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            <div class="form-group">
+              <label class="col-sm-2 control-label" for="input-processed-status">Pagamento Processado</label>
+              <div class="col-sm-10">
+                <select name="payment_iopay_checkout_transparente_pix_processed_status_id" id="input-processed-status" class="form-control">
+                  {% for order_status in order_statuses %}
+                    {% if order_status.order_status_id == payment_iopay_checkout_transparente_pix_processed_status_id %}
+                      <option value="{{ order_status.order_status_id }}" selected="selected">{{ order_status.name }}</option>
+                    {% else %}
+                      <option value="{{ order_status.order_status_id }}">{{ order_status.name }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-denied-status">Negado</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_denied_status_id" id="input-denied-status" class="form-control">
+                    {% for order_status in order_statuses %}
+                    {% if order_status.order_status_id == payment_iopay_checkout_transparente_pix_denied_status_id %}
+                    <option value="{{ order_status.order_status_id }}" selected="selected">{{ order_status.name }}</option>
+                    {% else %}
+                    <option value="{{ order_status.order_status_id }}">{{ order_status.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-expired-status">Expirado (prazo de pagamento expirado)</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_expired_status_id" id="input-expired-status" class="form-control">
+                    {% for order_status in order_statuses %}
+                    {% if order_status.order_status_id == payment_iopay_checkout_transparente_pix_expired_status_id %}
+                    <option value="{{ order_status.order_status_id }}" selected="selected">{{ order_status.name }}</option>
+                    {% else %}
+                    <option value="{{ order_status.order_status_id }}">{{ order_status.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-failed-status">Falhado</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_failed_status_id" id="input-failed-status" class="form-control">
+                    {% for order_status in order_statuses %}
+                    {% if order_status.order_status_id == payment_iopay_checkout_transparente_pix_failed_status_id %}
+                    <option value="{{ order_status.order_status_id }}" selected="selected">{{ order_status.name }}</option>
+                    {% else %}
+                    <option value="{{ order_status.order_status_id }}">{{ order_status.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-pending-status">Pendente</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_pending_status_id" id="input-pending-status" class="form-control">
+                    {% for order_status in order_statuses %}
+                    {% if order_status.order_status_id == payment_iopay_checkout_transparente_pix_pending_status_id %}
+                    <option value="{{ order_status.order_status_id }}" selected="selected">{{ order_status.name }}</option>
+                    {% else %}
+                    <option value="{{ order_status.order_status_id }}">{{ order_status.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-void-status">Pagamento Estornado</label>
+                <div class="col-sm-10">
+                  <select name="payment_iopay_checkout_transparente_pix_voided_status_id" id="input-void-status" class="form-control">
+                    {% for order_status in order_statuses %}
+                    {% if order_status.order_status_id == payment_iopay_checkout_transparente_pix_voided_status_id %}
+                    <option value="{{ order_status.order_status_id }}" selected="selected">{{ order_status.name }}</option>
+                    {% else %}
+                    <option value="{{ order_status.order_status_id }}">{{ order_status.name }}</option>
+                    {% endif %}
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+          <!-- Mapeamento de campos -->
+
+            <div class="tab-pane" id="tab-fields">
+              <hr/>
+              <h3>Mapeamento de Campos</h3><br><br>
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-canceled-status">CPF (account)<br><small style="font-weight: normal; font-size: 12px">O campo CPF não é nativo do OpenCart, portando cadastre-o com o tipo 'conta' e selecione-o ao lado</small></label>
+                <div class="col-sm-10">
+
+                  <select name="payment_iopay_checkout_transparente_pix_mapping_user_primarydocument" id="payment_iopay_checkout_transparente_pix_mapping_user_primarydocument" class="form-control">
+                    {% for custom_field in custom_fields %}
+                        {% if payment_iopay_checkout_transparente_pix_mapping_user_primarydocument == custom_field.custom_field_id %}
+                          <option value="{{ custom_field.custom_field_id }}" selected="selected">{{ custom_field.location }} : {{ custom_field.name }}</option>
+                        {% else %}
+                          <option value="{{ custom_field.custom_field_id }}" >{{ custom_field.location }} : {{ custom_field.name }}</option>
+                        {% endif %}
+                    {% endfor %}
+                  </select>
+
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-canceled-status">CPF (address)<br><small style="font-weight: normal; font-size: 12px">O campo CPF (de quem recebe a entrega) não é nativo do OpenCart, portando cadastre-o com o tipo 'endereço' e selecione-o ao lado. (Este campo é exigido pela análise antifraude)</small></label>
+                <div class="col-sm-10">
+
+                  <select name="payment_iopay_checkout_transparente_pix_mapping_shipping_primarydocument" id="payment_iopay_checkout_transparente_pix_mapping_shipping_primarydocument" class="form-control">
+                    {% for custom_field in custom_fields %}
+                      {% if payment_iopay_checkout_transparente_pix_mapping_shipping_primarydocument == custom_field.custom_field_id %}
+                        <option value="{{ custom_field.custom_field_id }}" selected="selected">{{ custom_field.location }} : {{ custom_field.name }}</option>
+                      {% else %}
+                        <option value="{{ custom_field.custom_field_id }}" >{{ custom_field.location }} : {{ custom_field.name }}</option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="payment_iopay_checkout_transparente_pix_mapping_shipping_addressnumber">Número do endereço (address)<br><small style="font-weight: normal; font-size: 12px">Campo para Número do endereço. Se você selecionar "Não usar campo separado para número" o módulo da IO extrairá o número automaticamente à partir do campo 'endereço'</small></label>
+                <div class="col-sm-10">
+
+                  <select name="payment_iopay_checkout_transparente_pix_mapping_shipping_addressnumber" id="payment_iopay_checkout_transparente_pix_mapping_shipping_addressnumber" class="form-control">
+                    <option value="0">Não usar campo separado para número</option>
+                    {% for custom_field in custom_fields %}
+                      {% if payment_iopay_checkout_transparente_pix_mapping_shipping_addressnumber == custom_field.custom_field_id %}
+                        <option value="{{ custom_field.custom_field_id }}" selected="selected">{{ custom_field.location }} : {{ custom_field.name }}</option>
+                      {% else %}
+                        <option value="{{ custom_field.custom_field_id }}" >{{ custom_field.location }} : {{ custom_field.name }}</option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+
+  // REMOVE A OPÇÃO 'ANTIFRAUD_PUBLIC_KEY' CASO O PLANO SELECIONADO SEJA SEM ANTIFRAUDE
+  function hideAntifraudPublicKey(hide){
+    var objStyle = document.getElementById('iopay_antifraud_public_key_field').style;
+
+    if(hide){
+      objStyle.display = 'none';
+    }else {
+      objStyle.display = 'block';
+    }
+  }
+
+</script>
+
+{% if payment_iopay_checkout_transparente_pix_antifraud_type != 'with_anti_fraud' and payment_iopay_checkout_transparente_pix_antifraud_type != 'with_anti_fraud_insurance' %}
+  <script>
+    hideAntifraudPublicKey(true);
+  </script>
+{% endif %}
+
+{{ footer }}
